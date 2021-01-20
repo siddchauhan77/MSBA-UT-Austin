@@ -2,4 +2,4 @@ Welcome to my projects completed during the Masters program at The University of
 
 # Projects
 
-[Advanced Predictive Modeling Projects](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/APM(Advanced%20Predictive%20Modeling)
+[Advanced Predictive Modeling Projects](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/APM(Advanced%20Predictive%20Modeling))
