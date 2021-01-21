@@ -10,9 +10,10 @@
 ### [Text Analysis](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/TextAnalysis) 
 - Predicting the similarities and common sentiment associated with the launch of new XBOX and PS5.
 
-### [Data Analytics]()
+### [Data Analytics](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/Data%20Analytics%20-%20Summer)
 
 - Predicting the popularity of a song using different features from Spotify Top 100 Songs across the decade.
 
-### [Predictive Modeling]()
+### [Predictive Modeling](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/Predictive%20Modeling%20-Summer)
 - Airbnb Price Prediction in NYC.
+- [R Mini-Projects](https://github.com/AmberCXX/UTMSBA_STA380_Part2_exercise)
