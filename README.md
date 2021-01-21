@@ -1,8 +1,18 @@
-# MSBA
-Projects created during the MS Business Analytics Program using structured and unstructured data.
+# MS Business Analytics
+## Projects created during the MS Business Analytics Program using structured and unstructured data.
 
 ### [Advanced Predictive Modeling](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/APM(Advanced%20Predictive%20Modeling))
+- Using 'Tweets' to extract selective words which determine sentiment of overall tweet using BERT models.
 
 ### [Data Management](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/Data%20Management) 
+- Modeling Amazon Call Center, Warehouse, Inventory Management and implementing within a Data Lake Spark.
 
 ### [Text Analysis](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/TextAnalysis) 
+- Predicting the similarities and common sentiment associated with the launch of new XBOX and PS5.
+
+### [Data Analytics]()
+
+- Predicting the popularity of a song using different features from Spotify Top 100 Songs across the decade.
+
+### [Predictive Modeling]()
+- Airbnb Price Prediction in NYC.
