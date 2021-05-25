@@ -17,3 +17,13 @@
 ### [Predictive Modeling](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/Predictive%20Modeling%20-Summer)
 - Airbnb Price Prediction in NYC.
 - [R Mini-Projects](https://github.com/AmberCXX/UTMSBA_STA380_Part2_exercise)
+
+## Spring 2021
+
+### Social Media Analytics
+
+### Learning Structures & Time Series
+
+### Stochastic Controls and Optimization
+
+### Blockchain Solutions & Dev
