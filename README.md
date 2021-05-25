@@ -1,5 +1,7 @@
 # MS Business Analytics
-## Projects created during the MS Business Analytics Program using structured and unstructured data.
+### Projects created during the MS Business Analytics Program using structured and unstructured data.
+
+## Fall 2020
 
 ### [Advanced Predictive Modeling](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/APM(Advanced%20Predictive%20Modeling))
 - Using 'Tweets' to extract selective words which determine sentiment of overall tweet using BERT models.
