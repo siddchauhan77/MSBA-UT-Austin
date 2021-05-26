@@ -27,8 +27,7 @@
 - [WSB Network Analysis Project to learn most connected communities](https://github.com/siddchauhan77/MSBA-UT-Austin/blob/main/Social%20Media%20Analytics/WSB%20Project%202021.zip)
 
 ### Learning Structures & Time Series
-- [SAS Homework Projects](uhttps://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/Time_Series)
-
+- [SAS Homework Projects](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/Time_Series)
 ### Stochastic Controls and Optimization
 
 ### Blockchain Solutions & Dev
