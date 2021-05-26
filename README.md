@@ -35,3 +35,7 @@
 - [Bitcoin Transaction Projects](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/Blockchain%20Solutions%20and%20Dev/Homeworks)
 - [Ethereum YouTube Video Ownership Platform](https://github.com/siddchauhan77/MSBA-UT-Austin/blob/main/Blockchain%20Solutions%20and%20Dev/ViCo-%20YouTube%20Clip%20Ownership%20Platform.pdf)
 - [Hyperledger Checking Accounts Project](https://github.com/siddchauhan77/MSBA-UT-Austin/blob/main/Blockchain%20Solutions%20and%20Dev/Hyperledger%20Presentation%20-%20Checking%20Accts.pptx)
+
+### FinTech 
+
+- [Python Projects](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/FinTech/FinTech%20Quizzes): Robo-Advising, Cryptography, Deep Learning, Linear Models, InsureTech
