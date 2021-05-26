@@ -28,7 +28,9 @@
 
 ### Learning Structures & Time Series
 - [SAS Homework Projects](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/Time_Series)
+
 ### Stochastic Controls and Optimization
+- [Linear Programming, Integer Programming, NonLinear Programming, Stochastic Programming & Dynamic Programming](https://github.com/siddchauhan77/MSBA-UT-Austin/tree/main/Stochastic%20Controls%20%26%20Optimization/Projects)
 
 ### Blockchain Solutions & Dev
 
