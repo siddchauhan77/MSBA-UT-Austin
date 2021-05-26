@@ -23,9 +23,16 @@
 ## Spring 2021
 
 ### Social Media Analytics
+- Twitter Scraping for NFL 2020
+- WSB Network Analysis Project to learn most connected communities
 
 ### Learning Structures & Time Series
+- SAS Homework Projects
 
 ### Stochastic Controls and Optimization
 
 ### Blockchain Solutions & Dev
+
+- Bitcoin Transaction Projects
+- Ethereum YouTube Video Ownership Platform
+- Hyperledger Checking Accounts Project
