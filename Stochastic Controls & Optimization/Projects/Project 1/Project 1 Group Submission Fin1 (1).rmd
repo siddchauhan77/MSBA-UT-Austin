@@ -1,0 +1,501 @@
+---
+title: "Stochastic Control/Optimization Project 1 Group 9"
+output: pdf_document
+---
+
+```{r setup, include=FALSE, error=TRUE}
+
+knitr::opts_chunk$set(
+  warning = TRUE, # show warnings
+  message = TRUE, # show messages
+  error = TRUE, # do not interrupt generation in case of errors,
+  echo = TRUE  # show R code
+)
+
+library(lpSolve)
+library(knitr)
+library(gurobi)
+library(slam)
+library(readr)
+
+#install.packages("ROI")
+library(ROI)
+
+# Set working directory as downloads
+load("Project1nonFA.Rdata")
+ROI_data <- read_csv("C:/Users/ADS/Downloads/ROI_data.csv")
+```
+
+---
+
+### 3. Formulate the marketing budget allocation problem as a linear program. Use gurobi to find the optimal budget allocation.
+
+```{r first_consulting_firm_ROI_a}
+
+obj = c(.031,.049,.024,.039,.016,.024,.046,.026,.033,.044) # objective vector with ROI's of first firm
+
+A = matrix(0,13,10)
+# initialize constraint matrix with 13 constraints for rows and 10 ROI's for columns
+A[1,] = c(1,1,0,0,-1,0,0,0,0,-1)
+# print + tv - facebook - email < = 0
+A[2,] = c(0,0,-2,-2,1,1,1,1,1,0)
+# - 2seo - 2adword + facebook + linkedin + instagram + snapchat + twitter  > = 0
+A[3,] = c(1,0,0,0,0,0,0,0,0,0)
+# each platform cannot exceed 3 million
+A[4,] = c(0,1,0,0,0,0,0,0,0,0) 
+A[5,] = c(0,0,1,0,0,0,0,0,0,0) 
+A[6,] = c(0,0,0,1,0,0,0,0,0,0) 
+A[7,] = c(0,0,0,0,1,0,0,0,0,0) 
+A[8,] = c(0,0,0,0,0,1,0,0,0,0) 
+A[9,] = c(0,0,0,0,0,0,1,0,0,0) 
+A[10,] = c(0,0,0,0,0,0,0,1,0,0) 
+A[11,] = c(0,0,0,0,0,0,0,0,1,0) 
+A[12,] = c(0,0,0,0,0,0,0,0,0,1)
+A[13,] = c(1,1,1,1,1,1,1,1,1,1)
+A
+
+b = c(0,0,3,3,3,3,3,3,3,3,3,3,10) # left hand side of contraint equations
+sense = c('<','>','<','<','<','<','<','<','<','<','<','<','<') # inequalities
+
+# put everything into a list for gurobi
+model = list()
+model$modelsense = 'max'
+model$obj = obj
+model$A = A
+model$rhs = b
+model$sense = sense
+
+params = list()
+params$outputflag = 0
+solOJ = gurobi(model,params=params)
+
+# print the optimal x
+print(solOJ$x)
+print(solOJ$objval) # Output
+```
+
+Output for print(solOJ$x): 0301003003
+This means that three million dollars should be allocated towards tv, instagram, and email, and one million dollars should be allocated towards adwords.
+
+Output for print(solOJ$objval): 0.456
+This means that the maximum expected ROI should be 4.56 percent.
+
+The code below shows another way to do the same optimization calculation.
+
+```{r first_consulting_firm_ROI_b}
+
+rm(list=ls())
+
+objective_vector = c(0.031,0.049,0.024,0.039,0.016,0.024,0.046,0.026,0.033,0.044)
+# objective vector
+
+total_budget = 10
+# cannot spend more than 10 million dollars
+
+platform_budget = 3
+# cannot spend more than 3 million dollars on any one platform
+
+allocation <- function(objective_vector, total_budget, platform_budget)
+{
+  A = matrix(0,13,10) # initialize constraint matrix
+  A[1,] = c(1,1,0,0,-1,0,0,0,0,-1) 
+  A[2,] = c(0,0,-2,-2,1,1,1,1,1,0) 
+  A[3,] = c(1,0,0,0,0,0,0,0,0,0) 
+  A[4,] = c(0,1,0,0,0,0,0,0,0,0) 
+  A[5,] = c(0,0,1,0,0,0,0,0,0,0) 
+  A[6,] = c(0,0,0,1,0,0,0,0,0,0) 
+  A[7,] = c(0,0,0,0,1,0,0,0,0,0) 
+  A[8,] = c(0,0,0,0,0,1,0,0,0,0) 
+  A[9,] = c(0,0,0,0,0,0,1,0,0,0) 
+  A[10,] = c(0,0,0,0,0,0,0,1,0,0) 
+  A[11,] = c(0,0,0,0,0,0,0,0,1,0) 
+  A[12,] = c(0,0,0,0,0,0,0,0,0,1) 
+  A[13,] = c(1,1,1,1,1,1,1,1,1,1)
+  print(A)
+  print(nrow(A))
+  
+  b = c(0,0,rep(platform_budget,10),total_budget)
+  print(length(b))
+  
+  sense = c('<','>','<','<','<','<','<','<','<','<','<','<','<') # inequalities
+  
+  model = list()
+  model$modelsense = 'max'
+  model$obj = objective_vector
+  model$A = A
+  model$rhs = b
+  model$sense = sense
+  params = list()
+  params$outputflag = 0 # minimize gurobi output
+  solOJ = gurobi(model,params=params)
+}
+
+result = allocation(objective_vector,total_budget, platform_budget)
+answer_value=result$objval
+answer_value=result$x
+answer_value
+```
+
+---
+
+### 4. Compare the two optimal allocations from the two ROI estimates.
+
+```{r second_consulting_firm_ROI_a}
+
+obj = c(.049,.023,.024,.039,.044,.046,.026,.019,.037,.026)
+# objective vector with ROI's of first firm
+
+A = matrix(0,13,10)
+# initialize constraint matrix with 13 constraints for rows and 10 ROI's for columns
+A[1,] = c(1,1,0,0,-1,0,0,0,0,-1) # print + tv - facebook - email < = 0
+A[2,] = c(0,0,-2,-2,1,1,1,1,1,0)
+# - 2seo - 2adword + facebook + linkedin + instagram + snapchat + twitter  > = 0
+A[3,] = c(1,0,0,0,0,0,0,0,0,0) # each platform cannot exceed 3 million
+A[4,] = c(0,1,0,0,0,0,0,0,0,0) 
+A[5,] = c(0,0,1,0,0,0,0,0,0,0) 
+A[6,] = c(0,0,0,1,0,0,0,0,0,0) 
+A[7,] = c(0,0,0,0,1,0,0,0,0,0) 
+A[8,] = c(0,0,0,0,0,1,0,0,0,0) 
+A[9,] = c(0,0,0,0,0,0,1,0,0,0) 
+A[10,] = c(0,0,0,0,0,0,0,1,0,0) 
+A[11,] = c(0,0,0,0,0,0,0,0,1,0) 
+A[12,] = c(0,0,0,0,0,0,0,0,0,1)
+A[13,] = c(1,1,1,1,1,1,1,1,1,1)
+A
+
+b = c(0,0,3,3,3,3,3,3,3,3,3,3,10) # left hand side of contraint equations
+sense = c('<','>','<','<','<','<','<','<','<','<','<','<','<') # inequalities
+
+# put everything into a list for gurobi
+model = list()
+model$modelsense = 'max'
+model$obj = obj
+model$A = A
+model$rhs = b
+model$sense = sense
+
+params = list()
+params$outputflag = 0
+solOJ = gurobi(model,params=params)
+
+# print the optimal x
+print(solOJ$x)
+print(solOJ$objval) # Output
+```
+
+The optimal ROI is still 4.56 percent. However, the budget allocation for each platform changed.
+
+Output for print(solOJ$x): 3001330000
+This means that three million dollars should be allocated towards print, facebook, and linkedin, and one million dollars should be allocated towards adwords.
+
+Output for print(solOJ$objval): 0.456
+This means that the maximum expected ROI should be 4.56 percent.
+
+The code below shows another way to the same optimization calculation.
+
+```{r second_consulting_firm_ROI_b}
+
+rm(list=ls())
+
+objective_vector = c(.049,.023,.024,.039,.044,.046,.026,.019,.037,.026)
+# objective vector
+
+total_budget = 10 # cannot spend more than 10 million dollars
+
+platform_budget = 3 # cannot spend more than 3 million dollars on any one platform
+
+allocation <- function(objective_vector, total_budget, platform_budget)
+{
+  A = matrix(0,13,10) # initialize constraint matrix
+  A[1,] = c(1,1,0,0,-1,0,0,0,0,-1) 
+  A[2,] = c(0,0,-2,-2,1,1,1,1,1,0) 
+  A[3,] = c(1,0,0,0,0,0,0,0,0,0) 
+  A[4,] = c(0,1,0,0,0,0,0,0,0,0) 
+  A[5,] = c(0,0,1,0,0,0,0,0,0,0) 
+  A[6,] = c(0,0,0,1,0,0,0,0,0,0) 
+  A[7,] = c(0,0,0,0,1,0,0,0,0,0) 
+  A[8,] = c(0,0,0,0,0,1,0,0,0,0) 
+  A[9,] = c(0,0,0,0,0,0,1,0,0,0) 
+  A[10,] = c(0,0,0,0,0,0,0,1,0,0) 
+  A[11,] = c(0,0,0,0,0,0,0,0,1,0) 
+  A[12,] = c(0,0,0,0,0,0,0,0,0,1) 
+  A[13,] = c(1,1,1,1,1,1,1,1,1,1)
+  print(A)
+  print(nrow(A))
+  
+  b = c(0,0,rep(platform_budget,10),total_budget)
+  print(length(b))
+  
+  sense = c('<','>','<','<','<','<','<','<','<','<','<','<','<') # inequalities
+  
+  model = list()
+  model$modelsense = 'max'
+  model$obj = objective_vector
+  model$A = A
+  model$rhs = b
+  model$sense = sense
+  params = list()
+  params$outputflag = 0 # minimize gurobi output
+  solOJ = gurobi(model,params=params)
+}
+
+result = allocation(objective_vector,total_budget, platform_budget)
+answer_value=result$objval
+answer_value=result$x
+answer_value
+```
+
+---
+
+### 5. Considering the estimated ROI's of both consulting firms, the allocations for each platform is not the same. 
+
+The company will still allocate money towards four different platforms, but which platforms will be chosen changes. Furthermore, the amount invested in each platform changes. The company should be indifferent between using the first consulting firm's ROI estimates and the second consulting firm's ROI estimates, if they only consider the maximum ROI for both consulting firms as 4.56 percent. Using the platform allocation output calculated with the first consulting firm's estimated RIO to find the total ROI, using the estimates of the second consulting firm's data, the total ROI would be: (3 million in tv * .023) + (3 million in instagram * .026) + (3 million in email * .026) + (1 million in adwords * .039) + 10 million = 10,264,000 dollars. Using the platform allocation output calculated with the first consulting firm's estimated ROI to find the total ROI, using the estimates of the first consulting firm's data, the total ROI would be: (3 million in tv * .049) + (3 million in instagram * .046) + (3 million in email * .044) + (1 million in adwords * .039) + 10 million = 10,456,000 dollars. Using the platform allocation output calculated with the second consulting firm's ROI estimates to find the total ROI, using the estimates of the first consulting firm's data, the total ROI would be: 10,252,000. Using the platform allocation output calculated with the second consulting firm's ROI estimates to find the total ROI, using the estimates of the second consulting firm's data, the total ROI would be: (3 million in print * .049) + (3 million in facebook * .044) + (3 million in linkedin * .046) + (1 million in adwords * .039) + 10 million = 10,456,000 dollars.
+
+1st firm's allocation output with 1st firm ROI: 10,456,000
+1st firm's allocation output with 2nd firm ROI: 10,264,000
+
+2nd firm's allocation output with 2nd firm ROI: 10,456,000
+2nd firm's allocation output with 1st firm ROI: 10,252,000
+
+Because the difference between 10,456,000 & 10,264,000 < 10,456,000 & 10,252,000. the difference between 10,264,000 & 10,252,000 is not too big, so having the second firm's perspective strengthens the first firm's ROI estimates.
+
+---
+
+### 6. The average ROI estimate for the first consulting firm is 3.32 percent. 
+
+This was calculated by adding up all the RIO percentages for each platform and dividing that sum by 10 platforms. The average ROI estimate for the second consulting firm is 3.33 percent.
+
+```{r}
+
+# The loop below will generate the upper and lower bounds of the range 
+
+names = colnames(data)
+# loop for Increase
+cat('Upper bound result from the loop: ')
+writeLines(" ")
+for(num_platform in seq(1,10,1)){
+  
+  # get the initial shadow price for different platform
+  model2 = model
+  model2$obj[num_platform] = model2$obj[num_platform]+ 0.001 # change b from 60 to 61 dollars
+  sol2 = gurobi(model2,params = params)
+  initial_allicaiton = solOJ$x # diff profit from change b for 1 unit increase of shadow prices
+
+
+  
+  for(change_roi in seq(1,100,1)){
+  
+  # Adjust increase roi
+  # get the shadow price
+  model2 = model
+  model2$obj[num_platform] = model2$obj[num_platform]+ 0.001*change_roi # change by i
+  sol2 = gurobi(model2,params = params)
+  temp_allocation = sol2$x
+
+    # if the temp_shadow_price is not equal to the initial shadow price, then print out the i
+  if (change_roi == 100){
+      cat("number of platform = ",num_platform,names[num_platform+1])
+  writeLines(" ")
+  cat("For upper bound, max change amount = +inf")
+  writeLines(" ")
+  writeLines(" ")
+  
+  }
+  else if(identical(initial_allicaiton,temp_allocation)){
+    
+  }
+  else{
+  cat("number of platform = ",num_platform,names[num_platform+1])
+  writeLines(" ")
+  cat("For upper bound, max change amount = ", change_roi*0.001-0.001)
+  writeLines(" ")
+  cat("Which changes the original value from",model$obj[num_platform],'to',model$obj[num_platform]+change_roi*0.001-0.001)
+  writeLines(" ")
+  writeLines(" ")
+
+  break
+} 
+  
+  }
+  
+}
+
+writeLines(" ")
+writeLines(" ")
+
+# loop for decrease
+cat('Lower bound result from the loop: ')
+writeLines(" ")
+for(num_platform in seq(1,10,1)){
+  
+  # get the initial shadow price for different platform
+  model2 = model
+  model2$obj[num_platform] = model2$obj[num_platform]+ 0.001 # change b from 60 to 61 dollars
+  sol2 = gurobi(model2,params = params)
+  initial_allicaiton = solOJ$x # diff profit from change b for 1 unit increase of shadow prices
+
+
+  
+  for(change_roi in seq(1,100,1)){
+  
+  # Adjust increase roi
+  # get the shadow price
+  model2 = model
+  model2$obj[num_platform] = model2$obj[num_platform]- 0.001*change_roi # change by i
+  sol2 = gurobi(model2,params = params)
+  temp_allocation = sol2$x
+
+    # if the temp_shadow_price is not equal to the initial shadow price, then print out the i
+  if (change_roi == 100){
+      cat("number of platform = ",num_platform,names[num_platform+1])
+  writeLines(" ")
+  cat("For lower bound, max change amount = -inf")
+  writeLines(" ")
+  writeLines(" ")
+  
+  }
+  else if(identical(initial_allicaiton,temp_allocation)){
+    
+  }
+  else{
+  cat("number of platform = ",num_platform,names[num_platform+1])
+  writeLines(" ")
+  cat("For lower bound, max change amount = ", change_roi*0.001-0.001)
+  writeLines(" ")
+  cat("Which changes the original value from",model$obj[num_platform],'to',model$obj[num_platform]-change_roi*0.001+0.001)
+  writeLines(" ")
+  writeLines(" ")
+
+  break
+} 
+  
+  }
+  
+}
+
+
+```
+
+
+Output:
+
+Status: optimal
+
+Platform 1: .048
+Platform 2: .04
+Platform 3: .019 
+Platform 4: .037 
+Platform 5: .042  
+Platform 6: .036  
+Platform 7: .026  
+Platform 8: .029  
+Platform 9: .036  
+Platform 10: .037
+
+Eleven Shadow Prices: 0.01 0.00 0.00 0.00 0.00 0.00 0.00 0.00 0.007 0.00 0.00
+Shadow Price Range: 0.015 0.039
+
+Interpretation of Output:
+The shadow price shows how much the objective function can change as long as the binding/nonbinding constraints don't change to nonbinding/binding. Because only 2 out of the 11 shadow prices are non-zero, only 2 of the constraints are binding. The range where the current shadow prices can remain constant is between .015 and .039.
+
+---
+
+### 7. Permission given to reinvest half of the return
+
+```{r stable_budget}
+library(ROI)
+
+alloc = matrix(0,12,10)
+budget = 10
+for (month in seq(1,12))
+{
+  obj = as.numeric(ROI_mat[month,]/100)
+  A[1,] = c(1,1,0,0,-1,0,0,0,0,-1)
+  A[2,] = c(0,0,-2,-2,1,1,1,1,1,0)
+  A[3,] = c(1,0,0,0,0,0,0,0,0,0)
+  A[4,] = c(0,1,0,0,0,0,0,0,0,0) 
+  A[5,] = c(0,0,1,0,0,0,0,0,0,0) 
+  A[6,] = c(0,0,0,1,0,0,0,0,0,0) 
+  A[7,] = c(0,0,0,0,1,0,0,0,0,0) 
+  A[8,] = c(0,0,0,0,0,1,0,0,0,0) 
+  A[9,] = c(0,0,0,0,0,0,1,0,0,0) 
+  A[10,] = c(0,0,0,0,0,0,0,1,0,0) 
+  A[11,] = c(0,0,0,0,0,0,0,0,1,0) 
+  A[12,] = c(0,0,0,0,0,0,0,0,0,1)
+  A[13,] = c(1,1,1,1,1,1,1,1,1,1)
+  A
+
+  b = c(0,0,3,3,3,3,3,3,3,3,3,3,10)
+  sense = c('<','>','<','<','<','<','<','<','<','<','<','<','<') 
+  
+  model = list()
+  model$modelsense = 'max'
+  model$obj = obj
+  model$A = A 
+  model$rhs = b 
+  model$sense = sense 
+  
+  params = list()
+  params$outputflag = 0
+  
+  solBudget1 = gurobi(model,params = params)
+  
+  if(solBudget1$objval>0){
+    budget = 10 + solBudget1$objval / 2
+  }
+  
+  alloc[month,] = solBudget1$x
+
+}
+
+rownames(alloc) = c(row.names(ROI_mat))
+colnames(alloc) = colnames(ROI_mat)
+alloc
+```
+
+The optimal allocation for each month:
+
+January- $3,000,000 in print, $0 in SEO, $0 in TV, $1,333,333 in Adwords, $0 in Facebook, $0 in LinkedIn, $2,666,666 in Instagram, $0 in Snapchat, $0 in Twitter, $3,000,000 in Email
+
+February- $3,000,000 in print, $0 in SEO, $0 in TV, $2,333,333 in Adwords, $3,000,000 in Facebook, $0 in LinkedIn, $0 in Instagram, $0 in Snapchat, $1,666,666 in Twitter, $0 in Email
+
+March- $0 in print, $0 in SEO, $0 in TV, $3,000,000 in Adwords, $0 in Facebook, $3,000,000 in LinkedIn, $1,000,000 in Instagram, $0 in Snapchat, $3,000,000 in Twitter, $0 in Email
+
+April- $0 in print, $0 in SEO, $0 in TV, $3,000,000 in Adwords, $0 in Facebook, $3,000,000 in LinkedIn, $3,000,000 in Instagram, $0 in Snapchat, $1,000,000 in Twitter, $0 in Email
+
+May- $1,000,000 in print, $0 in SEO, $0 in TV, $0 in Adwords, $0 in Facebook, $0 in LinkedIn, $3,000,000 in Instagram, $0 in Snapchat, $3,000,000 in Twitter, $3,000,000 in Email
+
+June- $3,000,000 in print, $0 in SEO, $0 in TV, $0 in Adwords, $0 in Facebook, $0 in LinkedIn, $3,000,000 in Instagram, $0 in Snapchat, $1,000,000 in Twitter, $3,000,000 in Email
+
+July- $0 in print, $0 in SEO, $0 in TV, $3,000,000 in Adwords, $1,000,000 in Facebook, $0 in LinkedIn, $3,000,000 in Instagram, $0 in Snapchat, $3,000,000 in Twitter, $0 in Email
+
+August- $2,500,000 in print, $0 in SEO, $0 in TV, $1,500,000 in Adwords, $0 in Facebook, $0 in LinkedIn, $0 in Instagram, $0 in Snapchat, $3,000,000 in Twitter, $3,000,000 in Email
+
+September- $500,000 in print, $0 in SEO, $0 in TV, $3,000,000 in Adwords, $0 in Facebook, $3,000,000 in LinkedIn, $0 in Instagram, $0 in Snapchat, $3,000,000 in Twitter, $500,000 in Email
+
+October- $0 in print, $0 in SEO, $0 in TV, $3,000,000 in Adwords, $0 in Facebook, $3,000,000 in LinkedIn, $3,000,000 in Instagram, $0 in Snapchat, $0 in Twitter, $1,000,000 in Email
+
+November- $3,000,000 in print, $0 in SEO, $0 in TV, $1,000,000 in Adwords, $0 in Facebook, $0 in LinkedIn, $3,000,000 in Instagram, $0 in Snapchat, $0 in Twitter, $3,000,000 in Email
+
+December- $3,000,000 in print, $0 in SEO, $2,000,000 in TV, $0 in Adwords, $3,000,000 in Facebook, $0 in LinkedIn, $0 in Instagram, $0 in Snapchat, $0 in Twitter, $2,000,000 in Email
+
+---
+
+### 8. The allocation found was not stable.
+
+```{r Q8, echo=FALSE}
+
+for (i in 1:11){
+  for (j in 1:10){
+    if (abs(alloc[i,j] - alloc[i+1,j]) > 1){
+      cat(sprintf("\"%d\" \"%d\"\n", i, j))
+      print("Not stable")
+      break
+    }
+  }
+}
+
+```
+
+X11 represents the first platform in the first month. X12 represents the first platform in the second month. X21 represents the second platform in the first month. If each platform has a variable for each month then each variable should be less than or equal to the maximum of 1.
+

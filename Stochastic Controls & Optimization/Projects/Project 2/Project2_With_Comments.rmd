@@ -1,0 +1,508 @@
+---
+title: "Project2"
+author: "Nicole, Ali, Sidd, Ryan"
+date: "3/10/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+#Time limit set 
+library(gurobi)
+#timelimit = 36000
+
+#reading the csv files
+stocks2019 = read.csv("stocks2019.csv", header=T)
+stocks2019[1:5,]
+
+stocks2020 = read.csv("stocks2020.csv", header=T)
+stocks2020[1:5,]
+```
+
+```{r}
+nc = ncol(stocks2019)
+nr = nrow(stocks2019)
+#this calculates the return per day (price increase/decrease per day) for 2019
+return2019 <- ((stocks2019[2:nr, 2:nc] - stocks2019[1:(nr-1), 2:nc])/stocks2019[1:(nr-1), 2:nc])
+return2019[1:5,]
+
+nc = ncol(stocks2020)
+nr = nrow(stocks2020)
+#this calculates the return per day (price increase/decrease per day) for 2020
+return2020 <- ((stocks2020[2:nr, 2:nc] - stocks2020[1:(nr-1), 2:nc])/stocks2020[1:(nr-1), 2:nc])
+return2020[1:5,]
+```
+```{r}
+#We are calculating the correlation matrix for the stocks
+nc = ncol(return2019)
+cor2019 = cor(return2019[2:nc])
+#diag(cor2019) = 0
+cor2019 <- as.data.frame(cor2019)
+cor2019[1:5,]
+```
+
+# Step 2
+
+*Stock Selection*
+
+```{r}
+#This creates the objective function with Yi and Xij
+n = ncol(cor2019)
+obj = c(rep(0,n)) # Yi
+for (i in 1:n){ 
+  obj = c(obj,cor2019[[i]]) # Xij
+}
+obj
+```
+
+```{r}
+#Looking for the top 5 stocks for our portfolio
+
+m = 5
+b = matrix(0,n+n^2+1,1)
+A = matrix(0,n+n^2+1,length(obj))
+sense = rep('',n+n^2+1)
+
+
+#Setting our constraints
+A[1,1:n] = 1
+b[1,] = m
+sense[1] = '='
+
+for (i in 1:n){
+  #cat(i+1,1+i*n,n+i*n,'\n')
+  A[i+1,(1+i*n):(n+i*n)] = 1
+  b[i+1,] = 1
+  sense[i+1] = '='
+}
+
+
+for (i in 1:n){
+  for (j in 1:n){
+    #cat((1+n+j+(i-1)*n),(j+i*n),j,'\n')
+    A[(1+n+j+(i-1)*n),(j+i*n)] = 1
+    A[(1+n+j+(i-1)*n),(j)] = -1
+  }
+}
+b[(1+n+1):(1+n+n^2),] = 0
+sense[(1+n+1):(1+n+n^2)] = '<'
+
+```
+
+
+```{r}
+#Solving the problem to get determine which stocks to pick
+library(gurobi)
+vtype = c(rep('B',length(obj))) # x: continuous; y: binomial
+
+model = list()
+model$modelsense = 'max'
+model$obj = obj
+model$A = A
+model$rhs = b
+model$sense = sense
+model$vtype = vtype
+
+params = list()
+params$outputflag = 0 # tell gurobi to shut up!
+
+invest.sol = gurobi(model,params = params)
+Yi = invest.sol$x[1:n]
+Yi
+invest.sol$objval 
+```
+
+
+*Calculating Portfolio Weights*
+
+```{r}
+#Getting the index of the stocks
+Yi
+selected = c()
+for (i in 1:length(Yi)){
+  if (Yi[i]==1){
+    selected = c(selected,i+1)
+  }
+}
+selected
+```
+
+
+```{r}
+#This outputs the top 5 stocks Gurobi selected
+selected.return2019 = return2019[selected]
+selected.return2019[1:5,]
+
+selected.return2020 = return2020[selected]
+selected.return2020[1:5,]
+```
+
+
+Objective:min Y1 + Y2 + ... + Yt
+
+Constraint: Y1 > Q1-sum(Wi * Ri1)  --> Y1 + sum(Wi * Ri1) > Q1
+            Y1 > sum(Wi * Ri1)-Q1
+            ...
+            Yt > Qt-sum(Wi * Rit) 
+            Yt > sum(Wi * Rit)-Qt
+
+```{r}
+t = nrow(selected.return2019)
+obj = c(rep(0,m),rep(1,t)) # W1, W2, ..., Wm, Y1, Y2, ..., Yt
+obj
+```
+
+
+```{r}
+#converted problem to a linear question, and below are the constraints
+b = matrix(0,t*2+1,1)
+A = matrix(0,t*2+1,m+t)
+sense = rep('',t*2+1)
+
+A[1,1:m] = 1 # sum(Wi) = 1
+b[1,] = 1
+sense[1] = '='
+
+for (i in 1:t){
+  A[1+i,m+i] = 1 #Yt
+  for (j in 1:m){
+    A[1+i,j] = selected.return2019[i,j] # Wi*Rit
+  }
+  b[1+i,] = return2019[i,1] # qt
+  sense[1+i] = '>'
+}
+
+for (i in 1:t){
+  A[1+t+i,m+i] = 1 #Yt
+  for (j in 1:m){
+    A[1+t+i,j] = -selected.return2019[i,j] # Wi*Rit
+  }
+  b[1+t+i,] = -return2019[i,1] # qt
+  sense[1+t+i] = '>'
+}
+
+
+```
+
+
+
+```{r}
+library(gurobi)
+model = list()
+model$modelsense = 'min'
+model$obj = obj
+model$A = A
+model$rhs = b
+model$sense = sense
+
+params = list()
+params$outputflag = 0 # tell gurobi to shut up!
+
+invest.sol = gurobi(model,params = params)
+invest.sol$x[1:m] # W1, W2, ..., Wm
+invest.sol$objval 
+```
+
+*How well does this portfolio track the index in 2020?*
+
+```{r}
+#Below shows us the 5 stocks we should track 
+
+# How well does this portfolio track the index in 2019?
+mindiff2019 = 0
+for (i in 1:t){
+  mindiff2019 = mindiff2019 + abs(return2019[i,1] - sum(invest.sol$x[1:m]*selected.return2019[i,]))
+}
+mindiff2019
+
+# How well does this portfolio track the index in 2020?
+mindiff2020 = 0
+for (i in 1:t){
+  mindiff2020 = mindiff2020 + abs(return2020[i,1] - sum(invest.sol$x[1:m]*selected.return2020[i,]))
+}
+mindiff2020
+```
+
+
+
+# Step 3 
+*Redo step (2) with m = 10, 20, …, 90, 100*
+
+
+```{r}
+library(gurobi)
+
+lastmindiff2019 = 0
+lastmindiff2020 = 0
+
+n = ncol(cor2019)
+mlist = c(seq(from = 10, to = n-1, by = 10),n)
+performance2019 = c()
+performance2020 = c()
+for (m in mlist){
+  cat('m = ', m, '\n')
+  n = ncol(cor2019)
+  obj = c(rep(0,n)) # Yi
+  for (i in 1:n){ 
+    obj = c(obj,cor2019[[i]]) # Xij
+  }
+  
+  b = matrix(0,n+n^2+1,1)
+  A = matrix(0,n+n^2+1,length(obj))
+  sense = rep('',n+n^2+1)
+  
+  
+  A[1,1:n] = 1
+  b[1,] = m
+  sense[1] = '='
+  
+  for (i in 1:n){
+    #cat(i+1,1+i*n,n+i*n,'\n')
+    A[i+1,(1+i*n):(n+i*n)] = 1
+    b[i+1,] = 1
+    sense[i+1] = '='
+  }
+  
+  
+  for (i in 1:n){
+    for (j in 1:n){
+      #cat((1+n+j+(i-1)*n),(j+i*n),j,'\n')
+      A[(1+n+j+(i-1)*n),(j+i*n)] = 1
+      A[(1+n+j+(i-1)*n),(j)] = -1
+    }
+  }
+  b[(1+n+1):(1+n+n^2),] = 0
+  sense[(1+n+1):(1+n+n^2)] = '<'
+  
+  vtype = c(rep('B',length(obj))) # x: continuous; y: binomial
+  
+  model = list()
+  model$modelsense = 'max'
+  model$obj = obj
+  model$A = A
+  model$rhs = b
+  model$sense = sense
+  model$vtype = vtype
+  
+  params = list()
+  params$outputflag = 0 # tell gurobi to shut up!
+  
+  invest.sol = gurobi(model,params = params)
+  Yi = invest.sol$x[1:n]
+  #cat('Yi: ',Yi, '\n')
+  #cat('Minimize correlation objective value: ',invest.sol$objval, '\n')
+  
+  
+  selected = c()
+  for (i in 1:length(Yi)){
+    if (Yi[i]==1){
+      selected = c(selected,i+1)
+    }
+  }
+
+  
+  selected.return2019 = return2019[selected]
+  cat('Selected stocks: ',colnames(selected.return2019), '\n')
+  selected.return2020 = return2020[selected]
+  t = nrow(selected.return2019)
+  
+  obj = c(rep(0,m),rep(1,t)) # W1, W2, ..., Wm, Y1, Y2, ..., Yt
+  b = matrix(0,t*2+1,1)
+  A = matrix(0,t*2+1,m+t)
+  sense = rep('',t*2+1)
+  
+  A[1,1:m] = 1 # sum(Wi) = 1
+  b[1,] = 1
+  sense[1] = '='
+  
+  for (i in 1:t){
+    A[1+i,m+i] = 1 #Yt
+    for (j in 1:m){
+      A[1+i,j] = selected.return2019[i,j] # Wi*Rit
+    }
+    b[1+i,] = return2019[i,1] # qt
+    sense[1+i] = '>'
+  }
+  
+  for (i in 1:t){
+    A[1+t+i,m+i] = 1 #Yt
+    for (j in 1:m){
+      A[1+t+i,j] = -selected.return2019[i,j] # Wi*Rit
+    }
+    b[1+t+i,] = -return2019[i,1] # qt
+    sense[1+t+i] = '>'
+  }
+  
+  
+  model = list()
+  model$modelsense = 'min'
+  model$obj = obj
+  model$A = A
+  model$rhs = b
+  model$sense = sense
+  
+  params = list()
+  params$outputflag = 0 # tell gurobi to shut the hell up!
+  
+  invest.sol = gurobi(model,params = params)
+  cat('Weights for stocks: ',invest.sol$x[1:m], '\n') # W1, W2, ..., Wm
+  
+  # How well does this portfolio track the index in 2019?
+  cat('How well does this portfolio track the index in 2019? ',invest.sol$objval, '\n')
+  performance2019 = c(performance2019,invest.sol$objval)
+  
+  # How well does this portfolio track the index in 2020?
+  mindiff2020 = 0
+  for (i in 1:t){
+    mindiff2020 = mindiff2020 + abs(return2020[i,1] - sum(invest.sol$x[1:m]*selected.return2020[i,]))
+  }
+  cat('How well does this portfolio track the index in 2020? ',mindiff2020, '\n')
+  performance2020 = c(performance2020,mindiff2020)
+
+}
+```
+
+```{r}
+plot(mlist,performance2019, type="b", col="blue", lwd=2, xlab="m", ylab="Difference in return", ylim=c(0,(max(performance2020)+0.1)))
+lines(mlist, performance2020, type="b",col="red", lwd=2)
+title("Difference in return vs m")
+legend(10,0.3,c("2019","2020"), lwd=c(2,2), col=c("blue","red"))
+```
+
+
+*Analyze the performance of the portfolio for each value of m. How does the performance change? Is there some value of m, where there are diminishing returns of including more stocks in the portfolio?*
+
+As m increases, the performance also increases in general. 
+However, for 2020 data, there are some times, increasing m makes performance decreases (m=40 and 60). When m are at 70 and 90, there are diminishing returns of including more stocks in the portfolio.
+
+
+*You can also look at the in-sample performance. That is, evaluate the performance in 2019 using 2019 portfolio construction and 2019 data. How is performance in 2019 different than performance in 2020? Why is it different?*
+
+The performance in 2019 is always better than the performance in 2020. This is because we use 2019 data to construct the model and the performance in 2019 is in-sample, whereas the performance in 2020 is out-of-sample.
+
+# Step 4
+*Another way you could solve this problem is to completely ignore the stock selection IP and reformulate the weight selection problem to be an MIP that constrains the number of non-zero weights to be an integer.*
+
+Objective:min Y1 + Y2 + ... + Yt
+
+Constraint: Y1 > Q1-sum(Wi * Ri1)  --> Y1 + sum(Wi * Ri1) > Q1
+            Y1 > sum(Wi * Ri1)-Q1  --> Y1 - sum(Wi * Ri1) > -Q1
+            ...
+            Yt > Qt-sum(Wi * Rit) 
+            Yt > sum(Wi * Rit)-Qt
+
+
+```{r}
+#Below is the Big M tecchnique required to solve the question
+library(gurobi)
+#timelimit = 3600
+t = nrow(return2019)
+n = ncol(return2019)-1
+M = 1
+
+performance2019 = c()
+performance2020 = c()
+mlist = c(5,seq(from = 10, to = n-1, by = 10),n)
+for (m in mlist){
+  print(m)
+  obj = c(rep(1,t),rep(0,n),rep(0,n)) # Y1,Y2,...,Yt; y1,y2,...,yn; w1,w2,...,wn
+  A = matrix(0,n+t*2+2,t+n*2)
+  b = matrix(0,n+t*2+2,1)
+  sense = rep('',n+t*2+2)
+  
+  A[1,(t+1):(t+n)] = 1 # sum of y’s is equal to m
+  b[1,] = m
+  sense[1] = '='
+  #A[1,]
+  
+  for (i in 1:n){
+    A[i+1,c(t+i,t+n+i)] = c(-M,1) # wi < Myi --> wi - Myi < 0 
+    b[i+1,] = 0
+    sense[1+i] = '<'
+  }
+  #A[2,]
+  
+  for (i in 1:t){ # Y1 + sum(Wi * Ri1) > Q1
+    A[1+n+i,i] = 1 #Yt
+    for (j in 1:n){
+      A[1+n+i,t+n+j] = return2019[i,j+1] # [row,col] -> [t,n] # Wi*Rit
+    }
+    b[1+n+i,] = return2019[i,1] # qt
+    sense[1+n+i] = '>'
+  }
+  
+  for (i in 1:t){ # Y1 - sum(Wi * Ri1) > -Q1
+    A[1+n+t+i,i] = 1 #Yt
+    for (j in 1:n){
+      A[1+n+t+i,t+n+j] = -return2019[i,j+1] # [row,col] -> [t,n] # Wi*Rit
+    }
+    b[1+n+t+i,] = -return2019[i,1] # qt
+    sense[1+n+t+i] = '>'
+  }
+  
+  A[1+n+t*2+1,(t+n+1):(t+n+n)] = 1 # sum(Wi) = 1
+  b[1+n+t*2+1,] = 1
+  sense[1+n+t*2+1] = '='
+  
+  
+  vtype = c(rep('C',t),rep('B',n),rep('C',n)) # C: continuous; B: binomial
+  
+  model = list()
+  model$modelsense = 'min'
+  model$obj = obj
+  model$A = A
+  model$rhs = b
+  model$sense = sense
+  model$vtype = vtype
+  
+  params = list()
+  params$TimeLimit = timelimit
+  params$outputflag = 0 # tell gurobi to shut the hell up!
+  
+  invest.sol = gurobi(model,params = params)
+  #invest.sol$x
+  print(invest.sol$x[(t+1):(t+n)])
+  print(invest.sol$x[(t+n+1):(t+n+n)])
+  #print(invest.sol$objval)
+  
+  cat('How well does this portfolio track the index in 2019? ',invest.sol$objval, '\n')
+  performance2019 = c(performance2019,invest.sol$objval)
+  
+  # How well does this portfolio track the index in 2020?
+
+  mindiff2020 = sum(abs(return2020[,1] - data.matrix(return2020[,2:(n+1)]) %*% matrix(invest.sol$x[(t+n+1):(t+n+n)])))
+  cat('How well does this portfolio track the index in 2020? ',mindiff2020, '\n')
+  performance2020 = c(performance2020,mindiff2020)
+}
+
+#step4 = cbind(performance2019,performance2020)
+#write.csv(step4,'step4.csv')
+```
+
+
+
+```{r}
+plot(mlist,step4[,1], type="b", col="blue", lwd=2, xlab="m", ylab="Difference in return", ylim=c(0,(max(step4[,2])+0.1)))
+lines(mlist, step4[,2], type="b",col="red", lwd=2)
+title("Difference in return vs m")
+legend(80,0.8,c("2019","2020"), lwd=c(2,2), col=c("blue","red"))
+```
+
+
+```{r}
+step4 = read.csv('step4.csv', header=T)
+step4
+n = ncol(return2019)-1
+mlist = c(5,seq(from = 10, to = n-1, by = 10),n)
+plot(mlist,step4[,2], type='b', col='blue', lwd=2, xlab='m', ylab='Difference in return', ylim=c(0,(max(step4[,3])+0.1)))
+lines(mlist, step4[,3], type='b',col='red', lwd=2)
+title('Difference in return vs m')
+legend(80,0.8,c('2019','2020'), lwd=c(2,2), col=c('blue','red'))
+```

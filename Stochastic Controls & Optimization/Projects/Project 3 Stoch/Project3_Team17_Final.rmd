@@ -1,0 +1,187 @@
+---
+title: "Project3_Team17"
+output: html_document
+authors: Siddhant Chauhan, Dawson Cook, Xinmeng Song, Katherine Zingerman
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(gurobi)
+library(dplyr)
+library(glmnet)
+library(ggplot2)
+```
+
+## R Markdown
+
+## Introduction 
+This analysis will explore the accuracy of LASSO vs. MIQP with pre-defined constraints. The goal is to optimize the hyperparameters,`k`, which stands for the number of betas allowed to be non-zero. The code will iterate over different values of `k` using a `10-fold CV`and compare the errors between each the Lasso model and the MIQP model. The first step is to set the directory, initialize key variables, and load in the data to do some pre-processing. A time limit was set so the model does not run endlessly.
+
+```{r Data Prep, echo=FALSE}
+setwd("/Users/Kzingerman/Desktop/STOCH")
+train = read.csv("training_data.csv")
+test = read.csv("test_data.csv")
+m = ncol(test) - 1 #set m to determine the number of columns which m = 50 
+TimeLimit = 400 #set the time limit 
+x = model.matrix(y~.,data=train) #create training X matrix for CV with MIQP and Lasso fitting
+y = train$y #create training y for CV with MIQP and Lasso fitting
+
+X.all = model.matrix(y~.,data=test) #create test X matrix for overall analysis
+y.all = test$y #create test y matrix for overall matrix 
+```
+
+## MIQP Analysis with varying Ks
+A important thing to consider is that to solve the problem it takes hours and even then the method does not converge to a single correct value. From the initial setup, a time limit is set to train the model on the training data and then cross validated using the training data. It is then compared on the test data and the model calculates an error which is then stored in a dataframe.
+
+The following function creates the constraint matrix,rhs matrix, objective matrix, and A matrix to formulate the MIQP problem in gurobi. It was formatted as a function for efficiency. 
+
+```{r MIQP Calculation to determine optimal K value, echo= TRUE}
+param_gen = function(x,y,k){
+    M = 100 #set the value of M to be nonbinding
+    m = ncol(x)-1
+    #quadratic function 
+    Q = matrix(0,2*m+1,2*m+1)
+    obj = rep(0,2*m+1)
+    p = t(x) %*% x
+    for (i in 1:nrow(p)){
+      for (j in 1:ncol(p)) {
+        Q[i,j][[1]] = p[i,j]
+      }
+    }
+    #objective function 
+    obj[1:(m+1)] = -2 * t(y) %*% x
+    
+    #constraint matrix
+    A = matrix(0, 2*m+1, 2*m+1) #initialize A matrix
+    
+    #beta[i] >= -M * z[i]
+    #beta[i] + M*z[i] >= 0
+    
+    A[1:m, 2:(m+1)] = diag(x=-1,m)
+    A[1:m, (m+2):(2*m+1)] = diag(x=-M, m)
+    
+    #beta[i] <= M * z[i]
+    #beta[i] - M*z[i] <= 0
+    
+    A[(m+1):(2*m), 2:(m+1)] = diag(x=1,m)
+    A[(m+1):(2*m), (m+2):(2*m+1)] = diag(x=-M, m)
+    
+    #sum of z's must be less than k
+    A[2*m+1, (m+2):(2*m+1)] = 1
+    
+    #gurobi model specifications
+    rhs = c(rep(0, 2*m), k)
+    sense = c(rep('<',(2*m+1))) #sets the direction of the inequality 
+    params = list()
+    params$outputflag = 0
+    params$TimeLimit = TimeLimit  
+    model = list()
+    model$obj = obj
+    model$Q = Q
+    model$A = A
+    model$rhs = rhs
+    model$sense = sense
+    model$modelsense = 'min'
+    model$vtype = c(rep('C', m+1), rep('B', m)) #sets the type of variables 
+    model$lb = -M #sets a lower limit 
+    MIQP_sol = gurobi(model,params=params)
+    return(MIQP_sol)
+}
+
+if (file.exists("error_df.csv")){
+  error_df = read.csv('error_df.csv', header=TRUE, stringsAsFactors = FALSE)
+  print(error_df)} else {
+
+  k = seq(5,50,5)
+  avg.errors = c() #create empty list for errors
+  for (i in 1:length(k)) {
+      train <- train[sample(nrow(train)),] #shuffle the data randomly
+      folds <- cut(seq(1,nrow(train)),breaks=10,labels=FALSE) #create 10 folds 
+      SSE = c()
+      for(fold in 1:10){ #cross validate using different values of k and 10 folds per k to determine the optimal value of k
+        cv_indices <- which(folds==fold,arr.ind=TRUE) #find the fold corresponding with that value of k
+        cv_data <- train[cv_indices, ] #create the dataset
+        train_data <- train[-cv_indices, ]
+        
+        #split into train and test per each fold 
+        X.train = model.matrix(y~.,data=train_data)
+        X.test = model.matrix(y~., data=cv_data)
+        y.train = train_data$y
+        y.test = cv_data$y
+        MIQP.sol = param_gen(X.train, y.train,k[i])
+        betas = MIQP.sol$x[1:(m+1)]
+        y.pred = X.test %*% betas
+        #calculate error on holdout data (cv data)
+        error = sum((y.test - y.pred)^2)
+        SSE = c(SSE,error)
+      }
+      avg.errors = c(avg.errors,mean(SSE)) #collect average errors for each value of K
+  }
+  #create DF with K vs SSE 
+  error_df = cbind("k" = k, "avg_SSE"=avg.errors)
+  write.csv(error_df,"error_df.csv") 
+  print(error_df)
+}
+```
+The value of K that results in the lowest SSE is 10. The SSE is 72.13188. The graph below is plotting the values of K versus the average SSE of each k-value. At k = 10, it is evident that the error is the lowest therefore k=10 is the optimal k value as it results in the most accurate model. 
+
+```{r MIQP comparing MSE per value of K, echo = TRUE}
+ggplot(data.frame(error_df), aes(x=k)) + 
+  geom_line(aes(y=error_df$avg_SSE, col="SSE")) + 
+  labs(title="Comparing SSE across all folds for Different k") +
+  theme(legend.title = element_blank()) +
+  scale_x_continuous(breaks = seq.int(from=0,to=50,by = 5)) +
+  ylab("SSE") + xlab("k")
+```
+
+## MIQP Calculation with Proper K 
+This optimization model uses the best value of k which is k=10 and solves the MIQP problem again with the optimal k value. The resulting error is 116.8272.  
+```{r MIQP with best K, echo = TRUE}
+k = error_df$k[which(error_df$avg_SSE == min(error_df$avg_SSE))]
+MIQP_final = param_gen(x,y,k) #this is fitting the model on the value of k with lowest SSE
+y.pred = X.all %*% MIQP_final$x[1:(m+1)]
+MIQP_error = sum((y.all - y.pred)^2) 
+print(MIQP_error)
+```
+
+## LASSO Calculation with Best Lambda
+The goal of lasso regression is to obtain the subset of predictors that minimizes prediction error for a quantitative response variable. The lasso does this by imposing a constraint ('lambda') on the model parameters that causes regression coefficients for some variables to shrink toward zero. The model finds this optimal lambda and reports the best error. 
+```{r Lasso Calculation, echo=TRUE}
+#pre-processing for Lasso
+grid=10^seq(10,-2,length=100)
+lasso=glmnet(x,y,alpha=1,lambda=grid)
+
+cv=cv.glmnet(x,y,alpha=1)
+best_lambda=cv$lambda.min #get the min lambda score to use
+print(best_lambda)
+
+beta_lasso=coef(cv,lambda=best_lambda) #betas with the best lambda
+
+lasso_pred=predict(lasso,s=best_lambda,newx=X.all) #predict on the test set
+lasso_error = sum((lasso_pred-y.all)^2) #average error
+print(lasso_error)
+```
+This calculation will find the best value of lambda i.e. best number of variables to use in the LASSO method to compare to the best MIQP method. The best lambda is 0.0808688. The lowest SSE from Lasso is 117.6934. 
+
+The plot below shows the variation in the value of actual and predicted y test values as the value of lambda is changed. The model tracks the actual values well and there are not large deviations from the actual data which is a positive sign. If possible to find a value of lambda that produces the same error, the higher value of lambda should be chosen as it creates a simpler model with fewer beta values and reduce overfitting.
+
+```{r Lasso Actual vs. Predicted values graph, echo = TRUE}
+ggplot(data.frame(x=1:nrow(test),actual=y.all,pred=lasso_pred), aes(x=x)) + 
+  geom_line(aes(y=y.all, col="Actual Values"), color='orange') + 
+  geom_point(aes(y=lasso_pred, col="Predicted Values"), color='cyan') + 
+  labs(title="Lasso Method ") +
+  theme(legend.title = element_blank()) +
+  ylab("Y Value of Test DF") + xlab("Number of Variables (k): (0 -> 50)")
+```
+
+The plot below shows the error between the MIQP model and the Lasso model. The error for the MIQP model with the optimal value of k=10 is 116.8272. The error for the Lasso model with the optimal value of lambda = 0.0808688 is 117.6934. 
+```{r Lasso Error vs MIQP error, echo = TRUE}
+Z = matrix(0,2,2)
+Z[1,] = c("Lasso", lasso_error)
+Z[2,] = c("MIQP", MIQP_error)
+Z <- as.data.frame(Z)
+ggplot(Z, aes(V1, V2)) + geom_col(position = "dodge", fill = 'blue') + labs(title="Lasso vs. MIQP Error Comparison") + ylab("Error") + xlab("Type of Model")
+```
+## Conclusion
+
+Both methods have their own advantages and disadvantages as shown in our methods above. If computional resources and time are unlimited then the MIQP method i.e. direct variable selection provides superior results in this situation compared to the LASSO method i.e. indirect variable selection. However, if computational resources and time are constrained then the LASSO method provides faster speeds while giving almost similar results with a small tradeoff in the accuracy of the model. If the data is too large then the time to solution for MIQP method might not be worth it as it might take resources from other projects while decreasing overall producitivity in the long-run. Although the error is slight,the firm should use the MIQP method as it is the most accurate method. 

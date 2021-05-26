@@ -1,0 +1,524 @@
+---
+title: "Project4"
+author: "Group1 - Qianhui Lian, India Lindsay, Jason Petri, Sidd Chauhan"
+date: "4/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction 
+
+The newsvendor model is a method of selecting the optimal pricing and quantities for the printing of newspapers to maximize total profit. In this analysis, our team adjusts the newsvendor model so that is can provide more realistic results. 
+
+We add in the following assumptions:
+
+1) If the printed quantity is less than demand, our publishing company can rush order newspapers from the print shop for an additional fee of $0.75 per newspaper.
+
+2) If the printed quantity exceeds demand, we must pay a disposal fee of $0.15 per newspaper. 
+
+3) Price is linearly related to demand and randomness can be approximated through the residuals of this regression. We use the past 99 days worth of demand and pricing data to identify the optimal price and quantity to maximize profit. 
+
+In the following analysis, it costs 50 cents to print a newspaper. We incorporate two approaches. The first assumes a set selling price of $1 per newspaper. We then regress demand on price to estimate our residuals as a proxy for randomness. The second approach assumes that demand fluctuates with price. We formulate the optimization model as a QCP using demand as a function of price.
+
+
+# Analysis
+
+## Read in Demand & Pricing Data
+```{r message=FALSE}
+library(gurobi)
+
+#pri.dem = read.csv('C:\\Users\\jason\\Downloads\\price_demand_data.csv')
+pri.dem = read.csv('Project4-Stoch/price_demand_data.csv')
+
+```
+
+
+## Approach 1: Fixed Demand and Fixed Price
+
+
+We introduce slack variables $h_i$ to represent the daily profit. Our decision variables are the optimal quantity, followed by $h_1$, $h_2$, ... , $h_n$. Our objective is to maximize the average daily profit: 
+
+$$
+max \frac{1}{n}\sum_{i=1}^n{h_i}
+$$
+Subject to the following constraints: 
+
+constraints:
+
+$$
+h_i \geq -\infty
+$$
+
+$$
+q \geq 0
+$$
+
+$$
+h_i \leq p*D_i - qc -t(q-D_i) 
+$$
+
+
+$$
+h_i \leq p*D_i - qc -g(D_i-q)
+$$
+
+```{r}
+# fit linear regression model to data set
+lin.m <- lm(demand ~ price, data = pri.dem)
+beta0 = lin.m$coefficients[1]
+beta1 = lin.m$coefficients[2]
+resi = residuals(lin.m)
+
+cost=0.5 # cost of production per newpapar 
+g=0.75 # cost of rush order
+t=0.15 # cost of leftover
+
+p=1 # let price=1
+nd = dim(pri.dem)[1] # number of days
+
+# generate demand data
+dem = c()
+for (i in resi) {
+  Di = beta0 + beta1*p + i
+  dem <- c(dem, Di)
+}
+
+```
+
+```{r}
+# solve for optimal quantity to produce when price=1
+
+obj = c(0,rep(1/nd,nd)) # q, hi
+lb = c(0,rep(-Inf,nd)) # quantity cannot be less than 0, allow negative profit
+
+# nd*2 rows: 99 constrains for leftover and 99 constrains for rush order
+# nd+1 col for 1 q and 99 hi
+A = matrix(0,2*nd,nd+1)
+rhs = rep(0,2*nd)
+dir = rep('<',2*nd)
+
+# populating A matrix and right hand side
+for(r in 1:nd){
+  # leftover newspaper
+  A[2*r-1,c(1,r+1)] = c(cost+t,1)
+  rhs[2*r-1] = p*dem[r]+t*dem[r]
+  
+  # rush order newspaper
+  A[2*r,c(1,r+1)] = c(cost-g,1)
+  rhs[2*r] = p*dem[r]-g*dem[r]
+}
+
+nv.model = list()
+nv.model$modelsense = 'max'
+nv.model$obj = obj
+nv.model$A = A
+nv.model$rhs = rhs
+nv.model$sense = dir
+nv.model$lb = lb
+
+pars = list()
+pars$outputflag = 0
+
+nv.sol = gurobi(nv.model,params=pars)
+cat('Quantity =', nv.sol$x[1], '\n')
+cat('Profit =', nv.sol$objval)
+
+```
+
+This approach resulted in an optimal quantity of 472 with an expected average profit of $231.5. This method relied on simulated demand data. The following two histograms compare the actual demand data with the simulated demand data. 
+
+The simulated demand data is more normally distributed while the actual demand is skewed left. The actual demand data consisted of 99 days of demand for varying prices. The simulated demand data estimates likely values for demand when price is equal to $1, relying upon  the linear relationship between price and demand based upon the actual demand data.
+
+```{r}
+library(ggplot2)
+og <- ggplot(pri.dem, aes(x=demand)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666") +  xlab('Actual Demand') + ylab('Density')
+pri.dem['sim_dem'] = dem 
+sim <- ggplot(pri.dem, aes(x=sim_dem)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666") +  xlab('Simulated Demand') + ylab('Density')
+library("gridExtra")   
+grid.arrange(og, sim, ncol = 2)   
+```
+
+## Approach 2: Demand as a Function of Price 
+
+Now, we adjust the newsvendor model so that demand can fluctuate by price. We again introduce slack variables $h_i$ to represent the daily profit. Our decision variables are now price, quantity, followed by $h_1$, $h_2$, ... , $h_n$. Our objective again is to maximize the average daily profit: 
+
+Objective Function: 
+
+$$
+max \frac{1}{n}\sum_{i=1}^n{h_i}
+$$
+
+Subject to the following constraints: 
+
+$$
+h_i \geq -\infty
+$$
+
+$$
+q \geq 0
+$$
+
+$$
+p \geq 0 
+$$
+$$
+h_i \leq p*D_i(p) - qc -t(q-D_i(p)) 
+$$
+
+
+$$
+h_i \leq p*D_i(p) - qc -g(D_i(p)-q)
+$$
+To input this problem into Gurobi, we reformulating last two constraints into QCP by relying on the following demand function: 
+
+$$
+D_i(p) = B_o + B_1p
+$$
+
+Our first constraint is reformatted as: 
+
+$$
+p^2B_1 + p(B_0 + E_i + B_1t) + q (-c-t) - h_i \geq -t(B_0 + E_i)
+$$
+
+
+Our second constraint is reformatted as: 
+
+$$
+p^2B_1 + p(B_0 + E_i - B_1g) + q (-c+g) - h_i \geq g(B_0 + E_i)
+$$
+
+```{r}
+# function to solve QCP
+opt.pq <- function(b0, b1, n, resid, cost, rush, excess) {
+
+  obj = c(0,0,rep((1/n),n))
+  lb = c(0,0,rep(-Inf,n)) # price and quantity cannot be less than 0, allow negative profit
+  
+  # constrains for price and quantity
+  A1 = matrix(0,2,(n+2))
+  A1[1,1] = 1
+  A1[2,1] = 1
+  
+  rhs = c(0,0)
+  sense = c('>','>')
+  
+  qcp.model = list()
+  qcp.model$modelsense = 'max'
+  qcp.model$obj = obj
+  qcp.model$A = A1
+  qcp.model$rhs = rhs
+  qcp.model$sense = sense
+  qcp.model$lb = lb
+  
+  # initialize constrain vector 
+  quadcon = vector('list', (n*2))
+  
+  for (j in 1:n){
+    # for quadratic term
+    Qc=matrix(0,(n+2),(n+2))
+    Qc[1,1] = b1
+    
+    # left over
+    quadcon[[j]]$Qc = Qc # b1*p*p
+    quadcon[[j]]$rhs = -(b0*excess)-(excess*resid[j]) #-b0*t-t*error
+    quadcon[[j]]$sense = '>'
+    linear.t = c((b0+(b1*excess)+resid[j]),(-cost-excess),rep(0,n)) 
+    linear.t[2+j] = -1 #(b0+b1*t+error)*p + (-cost-t)*q + (-1)hi
+    quadcon[[j]]$q = linear.t
+    
+    # rush order
+    quadcon[[j+n]]$Qc = Qc  # b1*p*p
+    quadcon[[j+n]]$rhs = (b0*rush)+(rush*resid[j]) # b0*g+g*error
+    quadcon[[j+n]]$sense = '>'
+    linear.g = c((b0-(b1*rush)+resid[j]),(-cost+rush),rep(0,n))
+    linear.g[2+j] = -1  #(b0-b1*g+error)*p + (-cost+g)*q + (-1)hi
+    quadcon[[j+n]]$q = linear.g
+    
+  }
+  
+  qcp.model$quadcon = quadcon
+  
+  params = list()
+  params$outputflag = 0
+  
+  qcp.sol = gurobi(qcp.model,params=params)
+  
+  return(qcp.sol)
+
+}
+
+sol <- opt.pq(beta0,beta1,nd,resi,cost,g,t)
+
+cat('Optimal price =',sol$x[1],'\n')
+cat('Optimal quantity =',sol$x[2],'\n')
+cat('Maximized profit =',sol$objval,'\n')
+
+```
+## How sensitive are price and quantity?
+
+Bootstrapping is a method of estimating the standard error and confidence interval for a statistic. Here, we will use it to gain a better understanding of our optimal price and quantity.
+
+How does bootstrapping work? 
+
+For a sample of n observations, we will take k repeated samples of equal size. For each sample, we will regress demand on price and generate values for B0, B1, and our residuals. We will then use our QCP function to estimate the optimal price and quantity with these values as input. This will result in k different estimates for our optimal price and quantity. We can use these estimates to generate the standard error and confidence interval for both price and quantity. Ultimately, this will help us identify how sensitive price and quantity are to our specific data.
+
+In the below code, we resample the entire data 500 times. Then for each value of B0 and B1, we use this linear regression to make predictions of demand for the whole data set. We obtain the residuals by subtracting the predicted values from the actual. This generates 500 estimates for B0, B1, and our 99 residuals. 
+
+Then, we use the newly simulated data to identify the optimal price and quantity by inputting the B1, BO, and residuals from the 500 bootstrap samples to our QCP function. This results in 500 estimates of price and quantity. 
+
+```{r}
+# initialize empty lists for price, quantity, profit
+opt.price = c()
+opt.quan = c()
+profit.max = c()
+
+# we are sampling the data 500 times
+repeats = seq(1,500,1)
+
+for (i in repeats) {
+  bs = sample(nrow(pri.dem), size =nd, replace=TRUE) # randomly resample the dataset with replacement
+  bs.sample = pri.dem[bs,]
+  
+  lin.m.bs <- lm(demand ~ price, data = bs.sample) # fit lm to find new betas
+  beta0.bs = lin.m.bs$coefficients[1]
+  beta1.bs = lin.m.bs$coefficients[2]
+  resi.bs = residuals(lin.m.bs)
+  nd.bs = length(resi.bs)
+  
+  # solve QCP for optimal price, optimal quantity and profit
+  sol.bs <- opt.pq(beta0.bs,beta1.bs,nd.bs,resi.bs,cost,g,t)
+  
+  # append to lists
+  opt.price[i]<- sol.bs$x[1]
+  opt.quan[i]<- sol.bs$x[2]
+  profit.max[i]<- sol.bs$objval
+  
+}
+
+# create new data frame containing optimal price, optimal quantity and profit for all 500 bootstrapped data set
+bs.df <- cbind('Sample'=repeats,'Optimal.Price'= opt.price,'Optimal.Quantity'=opt.quan,'Profit'=profit.max)
+bs.df <- as.data.frame(bs.df)
+
+```
+
+
+## Code for Comparing Methods 
+
+The following codeblock incorporates the standard newsvendor model that is currently being used by the company. The first function is the formulation of the standard nesvendor model. The second function takes the optimal quantity identified in the standard model and calculates the average daily profit for that quantity when accounting for rush order and disposal costs. 
+
+```{r}
+# standard NV model from class
+std.NV <- function (nd, price, cost, demand) {
+  obj = c(0,rep(1/nd,nd))
+  lb = c(0,rep(-Inf,nd)) 
+  A = matrix(0,2*nd,nd+1)
+  rhs = rep(0,2*nd)
+  dir = rep('<',2*nd)
+  
+  for(r in 1:nd){
+    A[2*r-1,c(1,r+1)] = c(cost,1) 
+    rhs[2*r-1] = price*demand[r]
+    A[2*r,c(1,r+1)] = c(cost-price,1)
+    rhs[2*r] = 0
+  }
+  
+  nv.model = list()
+  nv.model$modelsense = 'max'
+  nv.model$obj = obj
+  nv.model$A = A
+  nv.model$rhs = rhs
+  nv.model$sense = dir
+  nv.model$lb = lb
+  
+  pars = list()
+  pars$outputflag = 0
+  
+  nv.sol = gurobi(nv.model,params=pars)
+  nv.sol
+}
+#std.NV(nd, p, cost, dem)$x[1]
+#std.NV(nd, p, cost, dem)$objval
+
+gt.profit <- function (dem, nd, p, q, cost, t, g) {
+  
+  all.profits = c()
+  
+  for (d in 1:length(dem)) {
+    if (q > dem[d]) {
+      prof = p*dem[d] - (q*cost + t*(q-dem[d]))
+    }
+    else {
+      prof =p*dem[d] - (q*cost + g*(dem[d]-q))
+    }
+    all.profits[d] = prof
+  }
+  return (mean(all.profits))
+}
+
+```
+
+The following code block generates bootstrapped samples of the estimates for daily profit using the optimal quantity identified by the standard newsvendor model and its corresponding objective value when accounting for rush order and disposal costs. 
+
+```{r}
+p=1 # let price=1
+cost=0.5 # cost of production per newpapar 
+g=0.75 # cost of rush order
+t=0.15 # cost of leftover
+
+quan.lst = c()
+profit.lst = c()
+
+# we are sampling the data 500 times
+repeats = seq(1, 500,1)
+
+for (i in repeats) {
+  bs2 = sample(nd, size =nd, replace=TRUE) # randomly re-sample the data set with replacement
+  bs.sample2 = pri.dem[bs2,] 
+  
+  lin.m.bs2 <- lm(demand ~ price, data = bs.sample2) # fit lm to find new betas
+  beta0.bs2 = lin.m.bs2$coefficients[1]
+  beta1.bs2 = lin.m.bs2$coefficients[2]
+  resi.bs2 = residuals(lin.m.bs2)
+  nd.bs2 = nrow(bs.sample2)
+  
+  demand.lst = c()
+  for (j in resi.bs2){
+    D = beta0.bs2 + beta1.bs2*p + j
+    demand.lst <- c(demand.lst, D)
+  }
+  
+  std.NV.sol = std.NV(nd.bs2, p, cost, demand.lst)
+  q = std.NV.sol$x[1]
+  quan.lst[i] = q # append to list
+  
+  profit.bs = gt.profit(demand.lst, nd.bs2, p, q, cost, t, g)
+  profit.lst[i]<- profit.bs # append to list
+  
+}
+
+# create new data frame containing optimal quantity and profit for all 500 bootstrapped data set
+bs2.df <- cbind('Quantity'=quan.lst, 'Profit'=profit.lst)
+bs2.df <- as.data.frame(bs2.df)
+
+```
+
+## Comparing Methods 
+
+
+The boss's standard model using this current demand data selected the optimal quantity to produce as 570 for an expected profit of $219.28. The boss's method did not account for the realistic assumptions of the rush order fee or the disposal fee. These costs are incurred by the firm daily and it is essential that they are accounted for to gain a more accurate estimate of profit.
+
+When we take his optimal quantity and use it to calculate profit when accounting for these additional costs, we identified the expected profit would be $222.63. 
+
+```{r}
+print("Optimal Quantity")
+std.NV(nd, p, cost, dem)$x[1]
+print("Expected Profit")
+std.NV(nd, p, cost, dem)$objval
+print("Expected Profit Accounting for g and t")
+std.NV(nd, p, cost, dem)$objval
+q = std.NV(nd, p, cost, dem)$x[1]
+gt.profit(dem, nd, p, q, cost, t, g) 
+```
+When we generate bootstrap samples of the optimal quantity and profit using the boss's method, we achieve an average profit of $222.61 and an average optimal quantity of 570. 
+
+```{r}
+bs2.df
+print("Boss's Model")
+print("Average Profit")
+mean(bs2.df$Profit)
+print("Average Q")
+mean(bs2.df$Quantity)
+```
+Compared with our the bootstrapping outputs from the QCP approach, we identified an average profit of $234.911, an average optimal price of $0.95.5 and an average optimal quantity of 535.
+
+```{r}
+bs.df
+print("QCP Model")
+print("Average Profit")
+mean(bs.df$Profit)
+print("Average Price")
+mean(bs.df$Optimal.Price)
+print("Average Q")
+mean(bs.df$Optimal.Quantity)
+```
+## Visualizing the Comparison
+
+Plotted here are the optimal prices, optimal quantities and expected profits generated in the boostrap samples for the QCP. 
+
+In the first graph, we will create a scatterplot of optimal prices (x-axis) and optimal quantities (y-axis) with the histograms on the corresponding axes. The second graph will be a histogram of expectation of profits.
+
+```{r}
+library(ggplot2)
+library(ggExtra)
+
+# scatter plot with price and quantity histograms on the x and y axis 
+p<-ggplot(data=bs.df, mapping=aes(x=Optimal.Price, y=Optimal.Quantity)) + 
+  geom_point() +
+  xlab('Optimal.Price') + ylab('Optimal.Quantity') +
+  ggtitle('Optimal Price and Optimal Quantity')
+p1 <- ggMarginal(p, type="histogram",bins=(length(repeats)/10))
+p1
+
+# expected profit
+ggplot(data=bs.df,mapping=aes(x=Profit)) +
+  geom_histogram(bins=(length(repeats)/10), color="black", fill="#babcbf") +
+  geom_vline(aes(xintercept=mean(Profit)),color="blue", linetype="dashed", size=1) +
+  xlab('Profit') +
+  ggtitle('Expectation of Profits')
+
+
+```
+```{r}
+ggplot(data=bs2.df,mapping=aes(x=Profit)) +
+  geom_histogram(bins=(length(repeats)/10), color="black", fill="#babcbf") +
+  geom_vline(aes(xintercept=mean(Profit)),color="blue", linetype="dashed", size=1) +
+  xlab('Profit') +
+  ggtitle('Expectation of Profits: Model from Boss')
+
+
+```
+```{r}
+
+carrots <- data.frame(expected_profit = bs2.df$Profit)
+cukes <- data.frame(expected_profit = bs.df$Profit)
+
+# Now, combine your two dataframes into one.  
+# First make a new column in each that will be 
+# a variable to identify where they came from later.
+carrots$model <- 'Boss Model'
+cukes$model <- 'Our Model'
+
+# and combine into your new data frame vegLengths
+vegLengths <- rbind(carrots, cukes)
+ggplot(vegLengths, aes(expected_profit, fill = model)) + geom_density(alpha = 0.2)
+
+```
+The above distributions were formed from the same quantity of random simulations. We can observe that they appear to have similar deviations from the distribution mean. However, the mean expected profits differ across models. The boss' model has a lower expected profit as it does not take into account how demand could deviate through changes in price. The model that we suggest has a higher mean expected profit because we simulate the market in a more realistic fashion.
+
+#insert something about interpreting above visualization
+
+We can compare this with  a similar visualization for the bootstrapped samples for the boss's method. 
+
+```{r}
+
+```
+
+#insert other visuals here
+
+### Advantages and Disadvantages
+
+
+The boss's model is very simple to code and to understand. It is slightly more computationally efficient and can be understood by the general business man/woman. However, the boss's newsvendor model is a simplistic approach that requires an initial assumption of price. This assumption may be based on domain knowledge and the boss's experience. It is easier for him to incorporate his business intuition and inherent understanding of the customer into the model.
+
+However, markets tend to fluctuate. We would prefer to take a data driven approach to identify the optimal price by allowing the market to determine the prices. The linear relationship between price and demand is incorporated into our QCP approach in this analysis, allowing estimates of demand to respond to price.  
+
+It is always important to lean equally on both intuition and the data. If the data that we have suddenly becomes unrepresentative of the market, the QCP poses the potential risk of making poor pricing decisions. We expect our historic data to be accurate and to account for various seasonal patterns and economic cycles. For this approach to work, it is necessary for the company to source data that is reflective of the overall, year-long market and a representative sample. To account for seasonality, the company could segment the data by season and run the model by data from the specific season. A final disadvantage to the QCP is due to the effect of fluctuating prices on consumers. Customers may recognize that the prices for the newspapers are fluctuating and have a response that doesn't match our past data. Customers could potentially flock to our competitors, for a cheaper price. Our final recommendation is still for the company to identify optimal profits and quantity using this QCP approach. They should ideally take it one step at a time, relying upon both customer feedback, business intuition, and data to identify the long term effects of incorporating a fluctuating pricing strategy. 
+
